@@ -41,7 +41,7 @@ class IosPhoneRinger : PhoneRinger {
         val bytes = FindPhoneTone.wav()
         bytes.usePinned { NSData.create(bytes = it.addressOf(0), length = bytes.size.toULong()) }
     }
-    private val volumeView by lazy { MPVolumeView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0)) }
+    private var volumeView: MPVolumeView? = null
     private var player: AVAudioPlayer? = null
     private var volumeToRestore: Float? = null
     private var generation = 0
@@ -80,9 +80,10 @@ class IosPhoneRinger : PhoneRinger {
             }
             player = newPlayer
         }
-        if (volumeToRestore == null) volumeToRestore = session.outputVolume
-        // The slider only appears once the view has been laid out.
-        after(50.milliseconds) { setSystemVolume(1f) }
+        // outputVolume can be stale right after activation. A new MPVolumeView fetches the real
+        // volume, and its slider only appears once it has.
+        if (volumeView == null) volumeView = MPVolumeView(frame = CGRectMake(0.0, 0.0, 0.0, 0.0))
+        after(200.milliseconds) { raiseVolume() }
         player?.play()
 
         val thisGeneration = ++generation
@@ -99,19 +100,24 @@ class IosPhoneRinger : PhoneRinger {
             setSystemVolume(it)
         }
         volumeToRestore = null
-        memScoped {
-            val err = alloc<ObjCObjectVar<NSError?>>()
-            AVAudioSession.sharedInstance().setActive(
-                false,
-                withOptions = AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation,
-                error = err.ptr,
-            )
-        }
-        // Let the volume change reach the system before the app may be suspended.
+        // Deactivating before the restore lands leaves the session's outputVolume at the raised
+        // level, which the next ping would then save. The app must also stay awake until then.
         val thisGeneration = generation
         after(500.milliseconds) {
-            if (thisGeneration == generation) endBackgroundTask()
+            if (thisGeneration != generation) return@after
+            volumeView = null
+            deactivateSession()
+            endBackgroundTask()
         }
+    }
+
+    private fun deactivateSession() = memScoped {
+        val err = alloc<ObjCObjectVar<NSError?>>()
+        AVAudioSession.sharedInstance().setActive(
+            false,
+            withOptions = AVAudioSessionSetActiveOptionNotifyOthersOnDeactivation,
+            error = err.ptr,
+        )
     }
 
     private fun endBackgroundTask() {
@@ -120,13 +126,26 @@ class IosPhoneRinger : PhoneRinger {
         backgroundTask = UIBackgroundTaskInvalid
     }
 
-    private fun setSystemVolume(volume: Float) {
-        val slider = volumeView.subviews.filterIsInstance<UISlider>().firstOrNull()
-        if (slider == null) {
-            logger.w { "No volume slider; leaving the volume as it is" }
-            return
+    private fun raiseVolume() {
+        val slider = volumeSlider() ?: return
+        if (volumeToRestore == null) {
+            volumeToRestore = slider.value
+            logger.d {
+                "Saved the volume, ${slider.value} (outputVolume " +
+                    "${AVAudioSession.sharedInstance().outputVolume})"
+            }
         }
-        slider.setValue(volume, animated = false)
+        slider.setValue(1f, animated = false)
+    }
+
+    private fun setSystemVolume(volume: Float) {
+        volumeSlider()?.setValue(volume, animated = false)
+    }
+
+    private fun volumeSlider(): UISlider? {
+        val slider = volumeView?.subviews?.filterIsInstance<UISlider>()?.firstOrNull()
+        if (slider == null) logger.w { "No volume slider; leaving the volume as it is" }
+        return slider
     }
 
     private fun after(delay: Duration, block: () -> Unit) {
