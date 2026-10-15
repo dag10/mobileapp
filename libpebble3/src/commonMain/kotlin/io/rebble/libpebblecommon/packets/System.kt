@@ -450,6 +450,7 @@ open class SystemMessage(message: Message) : SystemPacket(endpoint) {
         FirmwareUpdateStatus(0x0bu),
         FirmwareUpdateStatusResponse(0x0cu),
         DrewFindPhone(0xd0u),
+        DrewFindPhoneStop(0xd1u),
     }
 
     val command = SUByte(m, 0x0u)
@@ -482,6 +483,9 @@ open class SystemMessage(message: Message) : SystemPacket(endpoint) {
 
     /** DrewPebbleOS asks the phone to play a sound so it can be found. */
     class DrewFindPhone: SystemMessage(Message.DrewFindPhone)
+
+    /** DrewPebbleOS asks the phone to stop that sound early. */
+    class DrewFindPhoneStop: SystemMessage(Message.DrewFindPhoneStop)
 
     /**
      * Per-object status of a partially-transferred firmware update, so it can be resumed.
@@ -604,6 +608,10 @@ fun systemPacketsRegister() {
         SystemMessage.endpoint,
         SystemMessage.Message.DrewFindPhone.value
     ) { SystemMessage.DrewFindPhone() }
+    PacketRegistry.register(
+        SystemMessage.endpoint,
+        SystemMessage.Message.DrewFindPhoneStop.value
+    ) { SystemMessage.DrewFindPhoneStop() }
 
     PacketRegistry.register(
         ProtocolEndpoint.TIME,

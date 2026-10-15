@@ -51,6 +51,14 @@ class IosPhoneRinger : PhoneRinger {
         dispatch_async(dispatch_get_main_queue()) { start() }
     }
 
+    override fun stop() {
+        dispatch_async(dispatch_get_main_queue()) {
+            if (player == null) return@dispatch_async
+            generation++
+            finish()
+        }
+    }
+
     private fun start() {
         player?.stop()
         // iOS can suspend the app once the sound stops, before the volume is put back.
@@ -127,6 +135,7 @@ class IosPhoneRinger : PhoneRinger {
     }
 
     private fun raiseVolume() {
+        if (player == null) return
         val slider = volumeSlider() ?: return
         if (volumeToRestore == null) {
             volumeToRestore = slider.value

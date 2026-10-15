@@ -26,6 +26,13 @@ class AndroidPhoneRinger(context: Context) : PhoneRinger {
         handler.post { start() }
     }
 
+    override fun stop() {
+        handler.post {
+            handler.removeCallbacks(finishRunnable)
+            finish()
+        }
+    }
+
     private fun start() {
         handler.removeCallbacks(finishRunnable)
         track?.release()

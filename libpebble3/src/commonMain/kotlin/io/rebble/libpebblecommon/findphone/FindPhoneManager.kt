@@ -4,7 +4,6 @@ import co.touchlab.kermit.Logger
 import io.rebble.libpebblecommon.connection.PebbleProtocolHandler
 import io.rebble.libpebblecommon.di.ConnectionCoroutineScope
 import io.rebble.libpebblecommon.packets.SystemMessage
-import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 
@@ -12,6 +11,9 @@ import kotlinx.coroutines.flow.onEach
 interface PhoneRinger {
     /** Starts the tone, or restarts it if it's already playing. */
     fun ring()
+
+    /** Stops the tone early and puts the volume back. */
+    fun stop()
 }
 
 class FindPhoneManager(
@@ -23,10 +25,17 @@ class FindPhoneManager(
 
     fun init() {
         protocolHandler.inboundMessages
-            .filterIsInstance<SystemMessage.DrewFindPhone>()
             .onEach {
-                logger.i { "Watch asked to find the phone" }
-                phoneRinger.ring()
+                when (it) {
+                    is SystemMessage.DrewFindPhone -> {
+                        logger.i { "Watch asked to find the phone" }
+                        phoneRinger.ring()
+                    }
+                    is SystemMessage.DrewFindPhoneStop -> {
+                        logger.i { "Watch asked to stop finding the phone" }
+                        phoneRinger.stop()
+                    }
+                }
             }
             .launchIn(watchScope)
     }

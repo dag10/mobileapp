@@ -116,6 +116,17 @@ internal class SystemMessageTest {
     }
 
     @Test
+    fun deserializeDrewFindPhoneStop() {
+        val bytes = ubyteArrayOf(
+            0x00u, 0x02u, // length
+            0x00u, 0x12u, // endpoint: system message
+            0x00u, 0xD1u, // command, type: DrewFindPhoneStop
+        )
+
+        assertIs<SystemMessage.DrewFindPhoneStop>(PebblePacket.deserialize(bytes))
+    }
+
+    @Test
     fun drewFindPhoneCapabilityIsBit30() {
         val flags = ProtocolCapsFlag.makeFlags(listOf(ProtocolCapsFlag.SupportsDrewFindPhone))
         assertEquals(listOf(0u, 0u, 0u, 0x40u, 0u, 0u, 0u, 0u).map { it.toUByte() }, flags.toList())
