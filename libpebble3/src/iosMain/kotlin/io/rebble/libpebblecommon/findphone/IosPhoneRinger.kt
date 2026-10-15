@@ -20,6 +20,8 @@ import platform.Foundation.NSData
 import platform.Foundation.NSError
 import platform.Foundation.create
 import platform.MediaPlayer.MPVolumeView
+import platform.UIKit.UIApplication
+import platform.UIKit.UIBackgroundTaskInvalid
 import platform.UIKit.UISlider
 import platform.darwin.DISPATCH_TIME_NOW
 import platform.darwin.dispatch_after
@@ -43,6 +45,7 @@ class IosPhoneRinger : PhoneRinger {
     private var player: AVAudioPlayer? = null
     private var volumeToRestore: Float? = null
     private var generation = 0
+    private var backgroundTask = UIBackgroundTaskInvalid
 
     override fun ring() {
         dispatch_async(dispatch_get_main_queue()) { start() }
@@ -50,6 +53,13 @@ class IosPhoneRinger : PhoneRinger {
 
     private fun start() {
         player?.stop()
+        // iOS can suspend the app once the sound stops, before the volume is put back.
+        if (backgroundTask == UIBackgroundTaskInvalid) {
+            backgroundTask = UIApplication.sharedApplication.beginBackgroundTaskWithName(
+                "Find Phone",
+                expirationHandler = { endBackgroundTask() },
+            )
+        }
         val session = AVAudioSession.sharedInstance()
         memScoped {
             val err = alloc<ObjCObjectVar<NSError?>>()
@@ -84,7 +94,10 @@ class IosPhoneRinger : PhoneRinger {
     private fun finish() {
         player?.stop()
         player = null
-        volumeToRestore?.let { setSystemVolume(it) }
+        volumeToRestore?.let {
+            logger.d { "Restoring the volume to $it" }
+            setSystemVolume(it)
+        }
         volumeToRestore = null
         memScoped {
             val err = alloc<ObjCObjectVar<NSError?>>()
@@ -94,6 +107,17 @@ class IosPhoneRinger : PhoneRinger {
                 error = err.ptr,
             )
         }
+        // Let the volume change reach the system before the app may be suspended.
+        val thisGeneration = generation
+        after(500.milliseconds) {
+            if (thisGeneration == generation) endBackgroundTask()
+        }
+    }
+
+    private fun endBackgroundTask() {
+        if (backgroundTask == UIBackgroundTaskInvalid) return
+        UIApplication.sharedApplication.endBackgroundTask(backgroundTask)
+        backgroundTask = UIBackgroundTaskInvalid
     }
 
     private fun setSystemVolume(volume: Float) {
